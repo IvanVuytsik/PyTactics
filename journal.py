@@ -1,0 +1,173 @@
+from settings import *
+from importCSV import *
+from journal_data import CHAPTERS, QUESTS
+
+class Journal:
+    def __init__(self):
+        self.font = pygame.font.Font(UI_FONT, UI_FONT_SM)
+        self.image = UI_ElEMENTS["questbook"]
+        self.rect = self.image.get_rect()
+        self.selected_chapter = None
+
+        self.display_surface = pygame.display.get_surface()
+        self.full_width = self.display_surface.get_size()[0]
+        self.full_height = self.display_surface.get_size()[1]
+
+        self.rect.x = self.full_width * 0.15
+        self.rect.y = self.full_height * 0.1
+
+        self.total_chapters = len(CHAPTERS)
+        self.chapter_names = CHAPTERS
+        self.quests = list(QUESTS.keys())
+        self.quest_data = list(QUESTS.values())
+
+        self.chapter_list = self.create_chapters()
+        self.quest_lists = self.create_quest_lists()
+        #self.create_quests(self.chapter_names[0])
+
+    def create_chapters(self):
+        chapter_list = []
+        for index, name in enumerate(CHAPTERS):
+            chapter = Chapter(self.rect.x + DOUBLETILE + (index * TRIPLETILE),
+                              self.rect.y - TILESIZE, name)
+            chapter_list.append(chapter)
+        return chapter_list
+
+    def create_quest_lists(self):
+        quest_list = []
+        for index, chapter in enumerate(self.chapter_names):
+            new_list = self.create_quests(self.chapter_names[index])
+            quest_list.append(new_list)
+        return quest_list
+
+    def create_quests(self, chapter):
+        quests_list = []
+        n = -1
+        for index, quest in enumerate(QUESTS): #[:10]
+            if QUESTS[quest]["chapter"] == chapter:
+                n += 1
+                new_quest = Quest(self.display_surface, quest, QUESTS[quest]["chapter"], self.rect.x + DOUBLETILE,
+                                  self.rect.y + DOUBLETILE + (n * TILESIZE))
+                quests_list.append(new_quest)
+        return quests_list
+
+    @staticmethod
+    def deselect(chapter):
+        if chapter.selected:
+            chapter.selected = False
+            chapter.rect.y += HALFTILE
+
+    def chapter_input(self, input_metadata):
+        for index, chapter in enumerate(self.chapter_list):
+            if all([chapter.rect.collidepoint(input_metadata[2]), not self.rect.collidepoint(input_metadata[2]),
+                    input_metadata[0], not chapter.selected]):
+                for item in self.chapter_list:
+                    self.deselect(item)
+                time.sleep(0.1)
+                chapter.selected = True
+                chapter.rect.y -= HALFTILE
+                sound_manager(SOUND_BANK["page"])
+                self.selected_chapter = index
+            elif all([chapter.rect.collidepoint(input_metadata[2]), not self.rect.collidepoint(input_metadata[2]),
+                      input_metadata[0], chapter.selected]):
+                time.sleep(0.1)
+                chapter.selected = False
+                chapter.rect.y += HALFTILE
+                self.selected_chapter = None
+
+    def quest_input(self, input_metadata, selected_chapter):
+        if self.selected_chapter is not None:
+            for index, quest in enumerate(self.quest_lists[selected_chapter]):
+                if all([quest.rect.collidepoint(input_metadata[2]), input_metadata[0], not quest.selected]):
+                    for item in self.quest_lists[selected_chapter]:
+                        item.selected = False
+                    time.sleep(0.1)
+                    quest.selected = True
+                    sound_manager(SOUND_BANK["take"])
+                elif all([quest.rect.collidepoint(input_metadata[2]), input_metadata[0], not quest.selected]):
+                    time.sleep(0.1)
+                    quest.selected = False
+
+    def show_chapters(self):
+        for index, chapter in enumerate(self.chapter_list):
+            chapter.draw(self.display_surface, index)
+
+    def show_chapter_data(self):
+        for chapter in self.chapter_list:
+            if chapter.selected:
+                show_info(self.display_surface, chapter.name, chapter.chapter_font, BOOK_COLOR,
+                          self.rect.x + FOURTILES, self.rect.y + QUARTERTILE)
+
+    def show_quests_per_chapter(self, input_metadata):
+        for index in range(self.total_chapters):
+            match self.selected_chapter:
+                case index: self.show_quests(index)
+            self.quest_input(input_metadata, index)
+
+    def show_quests(self, selected_chapter):
+        if self.selected_chapter is not None:
+            for index, quest in enumerate(self.quest_lists[selected_chapter]):
+                if QUESTS[quest.quest_name]["status"] == "unlocked":
+                    quest.draw()
+
+    def update(self, input_metadata):
+        self.chapter_input(input_metadata)
+        self.show_chapters()
+        self.display_surface.blit(self.image, self.rect)
+        self.show_chapter_data()
+        self.show_quests_per_chapter(input_metadata)
+
+
+class Chapter:
+    def __init__(self, x, y, name):
+        self.selected = False
+        self.name = name
+        self.image = UI_ElEMENTS["booksection"]
+        self.rect = self.image.get_rect()
+        self.chapter_font = pygame.font.Font(UI_FONT, UI_FONT_MD)
+        self.rect.x, self.rect.y = x, y
+
+    def draw(self, display_surface, number):
+        display_surface.blit(self.image, self.rect)
+        show_info(display_surface, number, self.chapter_font, BOOK_COLOR,
+                  self.rect.centerx - 5, self.rect.y + QUARTERTILE)
+        # pygame.draw.rect(display_surface, (255, 0, 0), self.rect, 3)
+
+
+class Quest:
+    def __init__(self, display_surface, quest_name, quest_chapter, x, y):
+        self.display_surface = display_surface
+        self.full_width = display_surface.get_size()[0]
+        self.full_height = display_surface.get_size()[1]
+        self.selected = False
+        self.quest_chapter = quest_chapter
+        self.quest_name = quest_name
+        self.image = QUESTS[quest_name]["image"]
+        self.description = QUESTS[quest_name]["desc"]
+        self.status = QUESTS[quest_name]["status"]
+        self.quest_font = pygame.font.Font(TEXT_FONT, TEXT_FONT_MD)
+        self.quest_desc_font = pygame.font.Font(DESC_FONT, DESC_FONT_Mini)
+        self.rect = pygame.rect.Rect(x, y, FOURTILES * 2, TILESIZE)
+        self.x_static = self.full_width * 0.54
+        self.y_static = self.full_height * 0.16
+        #create image data if there is an image
+        if self.image is not None:
+            self.image_rect = self.image.get_rect()
+            self.image_rect.x = self.x_static
+            self.image_rect.y = self.y_static + HALFTILE
+            self.start_line = self.image_rect.height
+        else:
+            self.start_line = 0
+
+    def draw(self):
+        show_info(self.display_surface, self.quest_name, self.quest_font,
+                  BOOK_COLOR if not self.selected else LORE_COLOR,
+                  self.rect.x, self.rect.y)
+        # draw image and description
+        if self.selected:
+            if self.image is not None:
+                self.display_surface.blit(self.image, self.image_rect)
+                pygame.draw.rect(self.display_surface, "#bd754a", self.image_rect, 10)
+            draw_story(self.display_surface, self.description, self.quest_desc_font,
+                       self.x_static, self.y_static + self.start_line, SEMITILE)
+        # pygame.draw.rect(display_surface, (255, 0, 0), self.rect, 3)
